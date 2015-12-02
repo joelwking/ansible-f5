@@ -5,13 +5,13 @@
      All rights reserved. 
 
      Revision history:
-     1 December 2015  |  1.0 - initial release
+     2 December 2015  |  1.0 - initial release
  
 """
 
 DOCUMENTATION = '''
 ---
-module: icontrol_add_ltm_node.py
+module: icontrol_install_config.py
 author: Joel W. King, World Wide Technology
 version_added: "1.0"
 short_description: foo
@@ -52,7 +52,9 @@ options:
 
 EXAMPLES = '''
 
-    Foo
+      ansible localhost -m icontrol_install_config -a "uri=/mgmt/tm/ltm/node, host=192.0.2.1, username=admin, password=redacted, body='name=bogturtle.example.net,address=192.0.2.15,partition=Common,rateLimit=disabled'"
+
+
 '''
 
 
@@ -83,16 +85,19 @@ class Connection(object):
 #
     def genericPOST(self, URI, body):
         """
-        Use POST to create a new configuration object from a JSON body, 
-        and use PUTor PATCH to edit an existing configuration object with a JSON body.
+            Use POST to create a new configuration object from a JSON body, 
+            and use PUTor PATCH to edit an existing configuration object with a JSON body.
         """
-        URI = "%s%s%s" % (self.transport, self.controllername, URI)
+        URI = "%s%s%s" % (self.transport, self.appliance, URI)
         body = json.dumps(body)
         try:
             r = requests.post(URI, auth=(self.username, self.password), data=body, headers=self.HEADER, verify=False)
         except requests.ConnectionError as e:
             return (False, e)
-        content = json.loads(r.content)
+        try:
+            content = json.loads(r.content)
+        except ValueError as e:
+            content = e                                    # ACI populates the field content, F5 apparently does not
         return (r.status_code, content)
 
 # ---------------------------------------------------------------------------
@@ -101,20 +106,16 @@ class Connection(object):
 
 def install_config(F5, uri, body):
     """ 
-        Issue a POST for a new configuration, PUT to edit an existing config
-        If the URI must have a slash as the first character, add it if missing
+        Issue a POST for a new configuration, PUT to edit an existing config.
+        If the URI must have a slash as the first character, add it if missing.
+        body is a string representation of a dictionary, e.g. "monitor=/Common/bigip,name=DC2_LTM,partition=Common"
+   
     """
-    ### Currently this logic only issues a POST
+    ### Currently this logic only issues a POST and CHANGED is always TRUE ###
     changed = True
     response_requested = ""
-
-    body =  {'address': module.params["nodeip"],
-             'name': , module.params["nodename"]
-             'partition': module.params["partition"],
-             'rateLimit': module.params["ratelimit"],
-             }
                      
- 
+    body = dict(x.split('=') for x in body.split(','))
 
     if uri[0] != "/":
         uri = "/" + uri
@@ -122,10 +123,10 @@ def install_config(F5, uri, body):
     rc, response = F5.genericPOST(uri, body)
     if rc == 200:
         if F5.debug:                                    # when debug enabled, include
-            response_requested = F5.content             # response data in output 
+            response_requested = response               # response data in output 
         return (0, changed, "%s: %s %s" % (rc, httplib.responses[rc], response_requested))
     else:
-        return (1, False, "%s: %s %s" % (rc, httplib.responses[rc], F5.content))
+        return (1, False, "%s: %s %s" % (rc, httplib.responses[rc], response))
 
 
 # ---------------------------------------------------------------------------
@@ -141,19 +142,20 @@ def main():
             password  = dict(required=True),
             uri = dict(required=True),
             body = dict(required=True),
-            debug = dict(required=False, default=False, type='bool')
+            debug = dict(required=False, default=False, choices=BOOLEANS)
          ),
         check_invalid_arguments=False,
         add_file_common_args=True
     )
 
     F5 = Connection(host=module.params["host"], 
-                    username=module.params["username"], password=module.params["password"],
+                    username=module.params["username"], 
+                    password=module.params["password"],
                     debug=module.params["debug"])
 
-    code, changed, response = cntrl.genericPOST(F5, module.params["uri"], body)
-    if rc == 1:
-        module.fail_json(msg="status_code= %s" % code)
+    code, changed, response = install_config(F5, module.params["uri"], module.params["body"])
+    if code == 1:
+        module.fail_json(msg=response)
     else:
         module.exit_json(changed=changed, content=response)
 
