@@ -6,6 +6,7 @@
 
      Revision history:
      2 December 2015  |  1.0 - initial release
+     3 December 2015  |  1.1 - cosmetic and best practices updates.
 
  
 """
@@ -164,6 +165,7 @@ def main():
     
 
 from ansible.module_utils.basic import *
-main()
+if __name__ == '__main__':
+    main()
 
 

@@ -6,6 +6,7 @@
 
      Revision history:
      2 December 2015  |  1.0 - initial release
+     3 December 2015  |  1.1 - updates for testing GTM use case and added PATCH
  
 """
 
@@ -13,14 +14,17 @@ DOCUMENTATION = '''
 ---
 module: icontrol_install_config.py
 author: Joel W. King, World Wide Technology
-version_added: "1.0"
-short_description: foo
+version_added: "1.1"
+short_description: Ansible module to PUT data to the REST API of an F5 appliance
 description:
-    - Bar.
+    - This module is a intended to be a demonstration and training module to update an F5 appliance configuration
+      from Ansible. It provides similar functionallity to cURL, it is a first step in developing additional REST API
+      capabilities using iControl REST API
 
 
 references:
       http://docs.ansible.com/
+      iControl(tm) REST API User Guide Version 12.0
 
  
 requirements:
@@ -41,6 +45,17 @@ options:
         description:
             - Login password
         required: true
+    uri:
+        description:
+            - URI to PUT or POST
+        required: true
+
+    body:
+        description:
+            - body the data PUT or POSTed to the F5, it is a string representation of a dictionary, 
+                 e.g. "monitor=/Common/bigip,name=DC2_LTM,partition=Common"
+              or a string representation of JSON
+                 e.g. '{"name":"NEW_WIDEIP","pools":[{"name":"NEW_POOL","partition":"Common","order":0,"ratio":1}]}'
 
     debug:
         description:
@@ -79,6 +94,7 @@ class Connection(object):
         self.password = password
         self.debug = debug
         self.HEADER = {"Content-Type": "application/json"}
+        self.body = ""
         return
 #
 #
@@ -97,7 +113,26 @@ class Connection(object):
         try:
             content = json.loads(r.content)
         except ValueError as e:
-            content = e                                    # ACI populates the field content, F5 apparently does not
+            content = "content not populated"              # F5 does not populate content in all conditions
+        return (r.status_code, content)
+#
+#
+#
+    def genericPATCH(self, URI, body):
+        """
+           PATCH to edit an existing configuration object with a JSON body.
+
+        """
+        URI = "%s%s%s" % (self.transport, self.appliance, URI)
+        body = json.dumps(body)
+        try:
+            r = requests.patch(URI, auth=(self.username, self.password), data=body, headers=self.HEADER, verify=False)
+        except requests.ConnectionError as e:
+            return (False, e)
+        try:
+            content = json.loads(r.content)
+        except ValueError as e:
+            content = "content not populated"              # F5 does not populate content in all conditions
         return (r.status_code, content)
 
 # ---------------------------------------------------------------------------
@@ -107,26 +142,39 @@ class Connection(object):
 def install_config(F5, uri, body):
     """ 
         Issue a POST for a new configuration, PUT to edit an existing config.
-        If the URI must have a slash as the first character, add it if missing.
-        body is a string representation of a dictionary, e.g. "monitor=/Common/bigip,name=DC2_LTM,partition=Common"
-   
+        In your playbook, the body is a string representation of a dictionary, 
+            body: "name=NEW_POOL,monitor=/Common/http"
+
+        or a string representation of JSON    
+            body: '{"name":"NEW_WIDEIP", "pools":[{"name":"NEW_POOL","partition":"Common","order":0,"ratio":1}]}'
+
+        to determine which format, we will test for an equal sign.
+        Add a slash to the beginning of the URI if missing.
+        
     """
-    ### Currently this logic only issues a POST and CHANGED is always TRUE ###
+    ### 
+    ### the changed flag always returns true for POST or PATCH
+    ###
     changed = True
-    response_requested = ""
-                     
-    body = dict(x.split('=') for x in body.split(','))
+    PATCHresponse = "not issued."
+
+    if "=" in body:
+        body = dict(x.split('=') for x in body.split(','))
+    else:
+        body = json.loads(body)
+        F5.body = body                                     # Save for debugging
 
     if uri[0] != "/":
         uri = "/" + uri
-    
-    rc, response = F5.genericPOST(uri, body)
+                                                           ####### THIS LOGIC IS FLAWED  ################################
+    rc, POSTresponse = F5.genericPOST(uri, body)           #  Attempt to create a new object, 409 means it exists
+    if rc == 409:
+        rc, PATCHresponse = F5.genericPATCH(uri, body)     #  Using PATCH method, we are modifying an existing object
+
     if rc == 200:
-        if F5.debug:                                    # when debug enabled, include
-            response_requested = response               # response data in output 
-        return (0, changed, "%s: %s %s" % (rc, httplib.responses[rc], response_requested))
+        return (0, changed, "LAST rc %s: %s POST %s PATCH %s" % (rc, httplib.responses[rc], POSTresponse, PATCHresponse))
     else:
-        return (1, False, "%s: %s %s" % (rc, httplib.responses[rc], response))
+        return (1, False, "LAST rc %s: %s POST %s PATCH %s" % (rc, httplib.responses[rc], POSTresponse, PATCHresponse))
 
 
 # ---------------------------------------------------------------------------
@@ -162,4 +210,5 @@ def main():
     return code
 
 from ansible.module_utils.basic import *
-main()
+if __name__ == '__main__':
+    main()

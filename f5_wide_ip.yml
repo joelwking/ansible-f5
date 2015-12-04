@@ -1,0 +1,92 @@
+#!/usr/bin/ansible-playbook
+---
+#
+#      Copyright (c) 2015 World Wide Technology, Inc. 
+#      All rights reserved. 
+#
+#      author: Joel W. King, Mark Wall,  World Wide Technology
+#      short_description: ADDME 
+#      description: ADDME 
+#
+- name: icontrol F5 modules to automate WideIP  
+  hosts: localhost 
+  connection: local
+  gather_facts: no
+  vars: 
+    ltm:
+      hostname: "10.255.138.87"
+    
+    gtm:
+      hostname: "10.255.138.89"
+      pool_members:
+       - name: DC1_LTM:/Common/NEW_VIP
+       - name: DC2_LTM:/Common/VS_LAMP
+
+ 
+  tasks:
+  - name: Decrypt the password file
+    include_vars: "./passwords.yml"
+
+  - name: Get facts from CSV file
+    csv_to_facts:
+      src: ./files/f5_wide_IP.csv
+
+  - name: Create LTM Nodes 
+    icontrol_install_config:
+      uri: "/mgmt/tm/ltm/node"
+      body: "name={{item.name}},address={{item.address}}"
+      host: "{{item.appliance}}"
+      username: admin
+      password: "{{password}}"
+    with_items: spreadsheet
+
+  - name: Create LTM Pool
+    icontrol_install_config:
+      uri: "/mgmt/tm/ltm/pool/"
+      # Note there was a space following http
+      body: "name=NEW_POOL,monitor=/Common/http"
+      host: "{{ltm.hostname}}"
+      username: admin
+      password: "{{password}}"
+
+  - name: Add Nodes to LTM Pool
+    icontrol_install_config:
+      uri: "/mgmt/tm/ltm/pool/NEW_POOL/members"
+      body: "name={{item.name}}:{{item.port}},partition={{item.partition}},fullPath=/{{item.partition}}/{{item.name}}:{{item.port}}"
+      host: "{{item.appliance}}"
+      username: admin
+      password: "{{password}}"
+    with_items: spreadsheet
+
+  - name: Create LTM VIP
+    icontrol_install_config:
+      uri: "/mgmt/tm/ltm/virtual"
+      body: '{"name":"NEW_VIP", "destination":"/Common/2.2.2.2:80",  "ipProtocol":"tcp", "mask":"255.255.255.255", "pool":"/Common/NEW_POOL", "sourceAddressTranslation": {"type":"automap"}}' 
+      host: "{{ltm.hostname}}"
+      username: admin
+      password: "{{password}}"
+
+  - name: Create GTM POOL
+    icontrol_install_config:
+      uri: "/mgmt/tm/gtm/pool/"
+      body: "name=NEW_POOL"
+      host: "{{gtm.hostname}}"
+      username: admin
+      password: "{{password}}"
+
+  - name: Create GTM POOL MEMBERS
+    icontrol_install_config:
+      uri: "/mgmt/tm/gtm/pool/NEW_POOL/members"
+      body: "name={{item.name}}"
+      host: "{{gtm.hostname}}"
+      username: admin
+      password: "{{password}}"
+    with_items: gtm.pool_members
+
+  - name: Create GTM WIDE IP
+    icontrol_install_config:
+      uri: "/mgmt/tm/gtm/wideip"
+      body: '{"name":"NEW_WIDEIP", "pools":[{"name":"NEW_POOL","partition":"Common","order":0,"ratio":1}]}' 
+      host: "{{gtm.hostname}}"
+      username: admin
+      password: "{{password}}"
