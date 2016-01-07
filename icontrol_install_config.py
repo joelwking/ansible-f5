@@ -7,6 +7,7 @@
      Revision history:
      2 December 2015  |  1.0 - initial release
      3 December 2015  |  1.1 - updates for testing GTM use case and added PATCH
+     7 January 2016   |  1.2 - added logic to update existing objects (PUT or PATCH)
  
 """
 
@@ -14,7 +15,7 @@ DOCUMENTATION = '''
 ---
 module: icontrol_install_config.py
 author: Joel W. King, World Wide Technology
-version_added: "1.1"
+version_added: "1.2"
 short_description: Ansible module to PUT data to the REST API of an F5 appliance
 description:
     - This module is a intended to be a demonstration and training module to update an F5 appliance configuration
@@ -113,7 +114,7 @@ class Connection(object):
         try:
             content = json.loads(r.content)
         except ValueError as e:
-            content = "content not populated"              # F5 does not populate content in all conditions
+            content = "F5 does not populate content in all conditions"
         return (r.status_code, content)
 #
 #
@@ -121,9 +122,22 @@ class Connection(object):
     def genericPATCH(self, URI, body):
         """
            PATCH to edit an existing configuration object with a JSON body.
+           Need to formulate the URL with the name as part of the URL.
+           Remove NAME from the body and attempt to PATCH, it may return a 400, 
+           indicating that there are elements in the body which cannot be present to
+           update the resource. In that case, we will not fail, but return that there
+           is no change to the object.
 
         """
-        URI = "%s%s%s" % (self.transport, self.appliance, URI)
+        try:
+            name = body['name']
+        except KeyError:
+            return (False, "KeyError, name does not exist in body, attempting PATCH")
+
+        # delete the name from the dictionary and add it to the URI
+        del body['name']
+        URI = "%s%s%s/%s" % (self.transport, self.appliance, URI, name)
+
         body = json.dumps(body)
         try:
             r = requests.patch(URI, auth=(self.username, self.password), data=body, headers=self.HEADER, verify=False)
@@ -132,7 +146,7 @@ class Connection(object):
         try:
             content = json.loads(r.content)
         except ValueError as e:
-            content = "content not populated"              # F5 does not populate content in all conditions
+            content = "F5 does not populate content in all conditions"
         return (r.status_code, content)
 
 # ---------------------------------------------------------------------------
@@ -141,7 +155,7 @@ class Connection(object):
 
 def install_config(F5, uri, body):
     """ 
-        Issue a POST for a new configuration, PUT to edit an existing config.
+        Issue a POST for a new configuration, PUT or PATCH to edit an existing config.
         In your playbook, the body is a string representation of a dictionary, 
             body: "name=NEW_POOL,monitor=/Common/http"
 
@@ -152,11 +166,6 @@ def install_config(F5, uri, body):
         Add a slash to the beginning of the URI if missing.
         
     """
-    ### 
-    ### the changed flag always returns true for POST or PATCH
-    ###
-    changed = True
-    PATCHresponse = "not issued."
 
     if "=" in body:
         body = dict(x.split('=') for x in body.split(','))
@@ -166,15 +175,17 @@ def install_config(F5, uri, body):
 
     if uri[0] != "/":
         uri = "/" + uri
-                                                           ####### THIS LOGIC IS FLAWED  ################################
-    rc, POSTresponse = F5.genericPOST(uri, body)           #  Attempt to create a new object, 409 means it exists
-    if rc == 409:
-        rc, PATCHresponse = F5.genericPATCH(uri, body)     #  Using PATCH method, we are modifying an existing object
+                                                  
+    rc, response = F5.genericPOST(uri, body)      #  Attempt to create a new object, 
+    if rc == 409:                                 #  409 means it exists
+        rc, response = F5.genericPATCH(uri, body) #  Using PATCH method, we are modifying an existing object
+        if rc == 400:                             #  400 means the body contained elements we cannot update
+            return (0, False, "rc %s: %s %s" % (rc, httplib.responses[rc], response))
 
     if rc == 200:
-        return (0, changed, "LAST rc %s: %s POST %s PATCH %s" % (rc, httplib.responses[rc], POSTresponse, PATCHresponse))
+        return (0, True, "rc %s: %s %s" % (rc, httplib.responses[rc], response))
     else:
-        return (1, False, "LAST rc %s: %s POST %s PATCH %s" % (rc, httplib.responses[rc], POSTresponse, PATCHresponse))
+        return (1, False, "rc %s: %s %s" % (rc, httplib.responses[rc], response))
 
 
 # ---------------------------------------------------------------------------
