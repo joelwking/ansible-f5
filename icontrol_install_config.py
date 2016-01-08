@@ -1,13 +1,14 @@
 #!/usr/bin/env python
 
 """
-     Copyright (c) 2015 World Wide Technology, Inc. 
+     Copyright (c) 2015 - 2016  World Wide Technology, Inc. 
      All rights reserved. 
 
      Revision history:
      2 December 2015  |  1.0 - initial release
      3 December 2015  |  1.1 - updates for testing GTM use case and added PATCH
      7 January 2016   |  1.2 - added logic to update existing objects (PUT or PATCH)
+     8 January 2016   |  1.3 - added try/except when creating dictionary from body
  
 """
 
@@ -15,7 +16,7 @@ DOCUMENTATION = '''
 ---
 module: icontrol_install_config.py
 author: Joel W. King, World Wide Technology
-version_added: "1.2"
+version_added: "1.3"
 short_description: Ansible module to PUT data to the REST API of an F5 appliance
 description:
     - This module is a intended to be a demonstration and training module to update an F5 appliance configuration
@@ -83,6 +84,7 @@ import requests
 # ---------------------------------------------------------------------------
 # F5 icontrol REST Connection Class
 # ---------------------------------------------------------------------------
+
 class Connection(object):
     """
       Connection class for Python to F5 REST calls
@@ -97,9 +99,9 @@ class Connection(object):
         self.HEADER = {"Content-Type": "application/json"}
         self.body = ""
         return
-#
-#
-#
+
+
+
     def genericPOST(self, URI, body):
         """
             Use POST to create a new configuration object from a JSON body, 
@@ -116,9 +118,9 @@ class Connection(object):
         except ValueError as e:
             content = "F5 does not populate content in all conditions"
         return (r.status_code, content)
-#
-#
-#
+
+
+
     def genericPATCH(self, URI, body):
         """
            PATCH to edit an existing configuration object with a JSON body.
@@ -149,6 +151,7 @@ class Connection(object):
             content = "F5 does not populate content in all conditions"
         return (r.status_code, content)
 
+
 # ---------------------------------------------------------------------------
 # install_config
 # ---------------------------------------------------------------------------
@@ -168,7 +171,10 @@ def install_config(F5, uri, body):
     """
 
     if "=" in body:
-        body = dict(x.split('=') for x in body.split(','))
+        try:
+            body = dict(x.split('=') for x in body.split(','))
+        except ValueError:
+            return (1, False, "syntax error creating dictionary from string in body")
     else:
         body = json.loads(body)
         F5.body = body                                     # Save for debugging
@@ -176,16 +182,17 @@ def install_config(F5, uri, body):
     if uri[0] != "/":
         uri = "/" + uri
                                                   
-    rc, response = F5.genericPOST(uri, body)      #  Attempt to create a new object, 
-    if rc == 409:                                 #  409 means it exists
-        rc, response = F5.genericPATCH(uri, body) #  Using PATCH method, we are modifying an existing object
-        if rc == 400:                             #  400 means the body contained elements we cannot update
+    rc, response = F5.genericPOST(uri, body)              #  Attempt to create a new object, 
+    if rc == 409:                                         #  409 means it exists
+        rc, response = F5.genericPATCH(uri, body)         #  Using PATCH method, we are modifying an existing object
+        if rc == 400:                                     #  400 means the body contained elements we cannot update
             return (0, False, "rc %s: %s %s" % (rc, httplib.responses[rc], response))
 
     if rc == 200:
         return (0, True, "rc %s: %s %s" % (rc, httplib.responses[rc], response))
     else:
         return (1, False, "rc %s: %s %s" % (rc, httplib.responses[rc], response))
+
 
 
 # ---------------------------------------------------------------------------
