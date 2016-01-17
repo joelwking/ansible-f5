@@ -9,6 +9,7 @@
      3 December 2015  |  1.1 - updates for testing GTM use case and added PATCH
      7 January 2016   |  1.2 - added logic to update existing objects (PUT or PATCH)
      8 January 2016   |  1.3 - added try/except when creating dictionary from body
+     15 Jan    2016   |  1.4 - check that body is a string before jason.loads Ansible 2.0 upgrade issue
  
 """
 
@@ -16,7 +17,7 @@ DOCUMENTATION = '''
 ---
 module: icontrol_install_config.py
 author: Joel W. King, World Wide Technology
-version_added: "1.3"
+version_added: "1.4"
 short_description: Ansible module to PUT data to the REST API of an F5 appliance
 description:
     - This module is a intended to be a demonstration and training module to update an F5 appliance configuration
@@ -176,8 +177,11 @@ def install_config(F5, uri, body):
         except ValueError:
             return (1, False, "syntax error creating dictionary from string in body")
     else:
-        body = json.loads(body)
-        F5.body = body                                     # Save for debugging
+        try:
+            body = json.loads(body)                        # Ansible 1.9
+        except TypeError:
+            pass                                           # Ansible 2.0
+    F5.body = body                                         # Save for debugging
 
     if uri[0] != "/":
         uri = "/" + uri
