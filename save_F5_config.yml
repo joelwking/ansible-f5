@@ -1,0 +1,28 @@
+#!/usr/bin/ansible-playbook
+---
+#
+#      Copyright (c) 2016 World Wide Technology, Inc.
+#      All rights reserved.
+#
+#      author: Joel W. King,  World Wide Technology
+#      name:  save_F5_config.yml
+
+#
+- hosts: localhost
+  connection: local
+  user: administrator
+
+  tasks:
+  - name: Decrypt the password file
+    include_vars: "./passwords.yml"
+
+  - name: Save F5 config
+    icontrol_install_config:
+      uri: "/mgmt/tm/sys/config"
+      # body: "command=save"       # Either body format will work
+      body: '{"command":"save"}'
+      method: POST                 # method is optional
+      host: "10.255.68.18"
+      username: admin
+      password: "{{password}}"
+
