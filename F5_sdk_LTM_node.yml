@@ -1,0 +1,31 @@
+#!/usr/bin/ansible-playbook
+---
+#
+#  testing version 1.0
+#
+- name: test icontrol F5 modules
+  hosts: localhost
+  connection: local
+  gather_facts: no
+  vars:
+    hostname: "10.255.68.18"
+    paherps:
+       - {name: "EasternMud.example.net", desc: "Kinosternon subrubrum", ip: "192.0.2.35"}
+       - {name: "Wood.example.net", desc: "Glyptemys insculpta ", ip: "192.0.2.36"}
+       - {name: "NorthernRedbellyCooter.example.net", desc: "Pseudemys rubriventris rubriventris ", ip: "192.0.2.37"}
+
+  tasks:
+  - name: Decrypt the password file
+    include_vars: "./passwords.yml"
+
+  - name: F5_sdk_LTM_node
+    F5_sdk_LTM_node:
+      partition: Common
+      state: present
+      name: "{{item.name}}"
+      address: "{{item.ip}}"
+      description: "{{item.desc}}"
+      host: "{{hostname}}"
+      username: admin
+      password: "{{password}}"
+    with_items: paherps
