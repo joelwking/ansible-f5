@@ -77,8 +77,8 @@ options:
 
 EXAMPLES = '''
 
-      ansible localhost -m icontrol_install_config 
-                        -a "uri=/mgmt/tm/ltm/node, host=192.0.2.1, username=admin, password=redacted, 
+      ansible localhost -m icontrol_install_config
+                        -a "uri=/mgmt/tm/ltm/node, host=192.0.2.1, username=admin, password=redacted,
                            body='name=bogturtle.example.net,address=192.0.2.15,partition=Common,rateLimit=disabled'"
 
     - name: Update LTM node configuration, using PATCH
@@ -238,6 +238,7 @@ def install_config(F5, uri, body):
 # ---------------------------------------------------------------------------
 # update_config
 # ---------------------------------------------------------------------------
+
 
 def update_config(F5, uri, body):
     """"
