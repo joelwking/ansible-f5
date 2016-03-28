@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
 """
-     Copyright (c) 2015 - 2016  World Wide Technology, Inc. 
-     All rights reserved. 
+     Copyright (c) 2015 - 2016  World Wide Technology, Inc.
+     All rights reserved.
 
      Revision history:
      2 December 2015  |  1.0 - initial release
@@ -13,14 +13,15 @@
      12 Feb    2016   |  1.5 - added ability to specify method (PATCH), and refactor for phantom cyber app
      17 Feb    2016   |  1.6 - debugging parameters to AnsibleModule
      19 Feb    2016   |  1.7 - testing and document updates
- 
+     28 Mar    2016   |  1.8 - style changes to satisfy Phantom cyber compilation
+
 """
 
 DOCUMENTATION = '''
 ---
 module: icontrol_install_config.py
 author: Joel W. King, World Wide Technology
-version_added: "1.7"
+version_added: "1.8"
 short_description: Ansible module to PUT data to the REST API of an F5 appliance
 description:
     - This module is a intended to be a demonstration and training module to update an F5 appliance configuration
@@ -61,7 +62,7 @@ options:
         required: false
     body:
         description:
-            - body the data PUT or POSTed to the F5, it is a string representation of a dictionary, 
+            - body the data PUT or POSTed to the F5, it is a string representation of a dictionary,
                  e.g. "monitor=/Common/bigip,name=DC2_LTM,partition=Common"
               or a string representation of JSON
                  e.g. '{"name":"NEW_WIDEIP","pools":[{"name":"NEW_POOL","partition":"Common","order":0,"ratio":1}]}'
@@ -99,22 +100,23 @@ EXAMPLES = '''
 '''
 
 
-import sys
-import time
+# import sys
+# import time
 import json
-import httplib
+# import httplib
 import requests
 
 # ---------------------------------------------------------------------------
 # F5 icontrol REST Connection Class
 # ---------------------------------------------------------------------------
 
+
 class Connection(object):
     """
       Connection class for Python to F5 REST calls
- 
+
     """
-    def __init__(self, host="192.0.2.1", username="admin", password="redacted", debug=False):                    
+    def __init__(self, host="192.0.2.1", username="admin", password="redacted", debug=False):
         self.transport = "https://"
         self.appliance = host
         self.username = username
@@ -124,11 +126,9 @@ class Connection(object):
         self.body = ""
         return
 
-
-
     def genericPOST(self, URI, body):
         """
-            Use POST to create a new configuration object from a JSON body, 
+            Use POST to create a new configuration object from a JSON body,
             and use PUTor PATCH to edit an existing configuration object with a JSON body.
         """
         URI = "%s%s%s" % (self.transport, self.appliance, URI)
@@ -143,8 +143,6 @@ class Connection(object):
         except ValueError as e:
             content = "F5 does not populate content in all conditions"
         return (r.status_code, content)
-
-
 
     def genericPATCH(self, URI, body):
         """
@@ -169,8 +167,6 @@ class Connection(object):
             content = "F5 does not populate content in all conditions"
         return (r.status_code, content)
 
-
-
     def fix_body_url(self, URI, body):
         """
            if a POST fails with a 409, we modify the body by removing NAME and  and append to the URI, 
@@ -188,8 +184,6 @@ class Connection(object):
         self.body = body                                         # Save for debugging
 
         return URI, body
-
-
 
     def standarize_body_url(self, URI, body):
         """
@@ -220,7 +214,6 @@ class Connection(object):
         return URI, body
 
 
-
 # ---------------------------------------------------------------------------
 # install_config
 # ---------------------------------------------------------------------------
@@ -244,8 +237,6 @@ def install_config(F5, uri, body):
     else:
         return (1, False, "rc %s: %s" % (rc,  response))
 
-
-
 # ---------------------------------------------------------------------------
 # update_config
 # ---------------------------------------------------------------------------
@@ -261,7 +252,6 @@ def update_config(F5, uri, body):
         return (1, False, "rc %s: %s" % (rc, response))
 
 
-
 # ---------------------------------------------------------------------------
 # MAIN
 # ---------------------------------------------------------------------------
@@ -269,19 +259,17 @@ def update_config(F5, uri, body):
 def main():
     "   "
     module = AnsibleModule(
-        argument_spec = dict(
-            host = dict(required=True),
-            username = dict(required=True),
-            password  = dict(required=True),
-            uri = dict(required=True),
-            body = dict(required=True),
-            method = dict(required=False, default="POST"),
-            debug = dict(required=False, default=False, choices=BOOLEANS)
+        argument_spec=dict(
+            host=dict(required=True),
+            username=dict(required=True),
+            password=dict(required=True),
+            uri=dict(required=True),
+            body=dict(required=True),
+            method=dict(required=False, default="POST"),
+            debug=dict(required=False, default=False, choices=BOOLEANS)
          ),
         check_invalid_arguments=False
     )
-
-
 
     F5 = Connection(host=module.params["host"], 
                     username=module.params["username"], 
