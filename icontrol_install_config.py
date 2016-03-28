@@ -33,7 +33,7 @@ references:
       http://docs.ansible.com/
       iControl(tm) REST API User Guide Version 12.0
 
- 
+
 requirements:
     - none
 
@@ -77,7 +77,9 @@ options:
 
 EXAMPLES = '''
 
-      ansible localhost -m icontrol_install_config -a "uri=/mgmt/tm/ltm/node, host=192.0.2.1, username=admin, password=redacted, body='name=bogturtle.example.net,address=192.0.2.15,partition=Common,rateLimit=disabled'"
+      ansible localhost -m icontrol_install_config 
+                        -a "uri=/mgmt/tm/ltm/node, host=192.0.2.1, username=admin, password=redacted, 
+                           body='name=bogturtle.example.net,address=192.0.2.15,partition=Common,rateLimit=disabled'"
 
     - name: Update LTM node configuration, using PATCH
       icontrol_install_config:
@@ -99,11 +101,7 @@ EXAMPLES = '''
 
 '''
 
-
-# import sys
-# import time
 import json
-# import httplib
 import requests
 
 # ---------------------------------------------------------------------------
@@ -148,7 +146,7 @@ class Connection(object):
         """
            PATCH to edit an existing configuration object with a JSON body.
            Need to formulate the URL with the name as part of the URL.
-           Remove NAME from the body and attempt to PATCH, it may return a 400, 
+           Remove NAME from the body and attempt to PATCH, it may return a 400,
            indicating that there are elements in the body which cannot be present to
            update the resource. In that case, we will not fail, but return that there
            is no change to the object.
@@ -169,14 +167,14 @@ class Connection(object):
 
     def fix_body_url(self, URI, body):
         """
-           if a POST fails with a 409, we modify the body by removing NAME and  and append to the URI, 
+           if a POST fails with a 409, we modify the body by removing NAME and  and append to the URI,
            this logic makes those modifications and returns a revised URI and body
         """
         try:
             name = body['name']
         except KeyError:
             # if name doesn't exist we can't change anything, return what we were sent
-            return  URI, body
+            return URI, body
 
         # delete the name from the dictionary and add it to the URI
         del body['name']
@@ -187,10 +185,10 @@ class Connection(object):
 
     def standarize_body_url(self, URI, body):
         """
-            In your playbook, the body is a string representation of a dictionary, 
+            In your playbook, the body is a string representation of a dictionary,
                 body: "name=NEW_POOL,monitor=/Common/http"
 
-            or a string representation of JSON    
+            or a string representation of JSON
                 body: '{"name":"NEW_WIDEIP", "pools":[{"name":"NEW_POOL","partition":"Common","order":0,"ratio":1}]}'
 
             to determine which format, we will test for an equal sign.
@@ -219,23 +217,23 @@ class Connection(object):
 # ---------------------------------------------------------------------------
 
 def install_config(F5, uri, body):
-    """ 
+    """
         Issue a POST for a new configuration, if that fails attempt to PATCH, which
         is updating an existing configuration
-        
+
     """
-                                 
-    rc, response = F5.genericPOST(uri, body)              #  Attempt to create a new object, 
-    if rc == 409:                                         #  409 means it exists, attempt a PATCH, it  modifies an existing object
-        uri, body = F5.fix_body_url(uri, body)            #  remove the 'name' from the body and change the URL
+
+    rc, response = F5.genericPOST(uri, body)              # Attempt to create a new object,
+    if rc == 409:                                         # 409 means it exists, attempt a PATCH, it  modifies an existing object
+        uri, body = F5.fix_body_url(uri, body)            # remove the 'name' from the body and change the URL
         rc, response = F5.genericPATCH(uri, body)
-        if rc == 400:                                     #  400 means the body contained elements we cannot update
+        if rc == 400:                                     # 400 means the body contained elements we cannot update
             return (0, False, "rc %s: %s" % (rc, response))
 
     if rc == 200:
         return (0, True, "rc %s: %s" % (rc, response))
     else:
-        return (1, False, "rc %s: %s" % (rc,  response))
+        return (1, False, "rc %s: %s" % (rc, response))
 
 # ---------------------------------------------------------------------------
 # update_config
@@ -271,12 +269,12 @@ def main():
         check_invalid_arguments=False
     )
 
-    F5 = Connection(host=module.params["host"], 
-                    username=module.params["username"], 
+    F5 = Connection(host=module.params["host"],
+                    username=module.params["username"],
                     password=module.params["password"],
                     debug=module.params["debug"])
 
-    uri, body = F5.standarize_body_url(module.params["uri"], module.params["body"]) 
+    uri, body = F5.standarize_body_url(module.params["uri"], module.params["body"])
 
     if module.params["method"].upper() == "PATCH":
         code, changed, response = update_config(F5, uri, body)
