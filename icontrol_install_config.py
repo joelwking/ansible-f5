@@ -14,6 +14,7 @@
      17 Feb    2016   |  1.6 - debugging parameters to AnsibleModule
      19 Feb    2016   |  1.7 - testing and document updates
      28 Mar    2016   |  1.8 - style changes to satisfy Phantom cyber compilation
+     31 May    2016   |  2.0 - type="bool" on debug  Ansible 2.1
 
 """
 
@@ -21,7 +22,7 @@ DOCUMENTATION = '''
 ---
 module: icontrol_install_config.py
 author: Joel W. King, World Wide Technology
-version_added: "1.8"
+version_added: "2.0"
 short_description: Ansible module to PUT data to the REST API of an F5 appliance
 description:
     - This module is a intended to be a demonstration and training module to update an F5 appliance configuration
@@ -265,7 +266,7 @@ def main():
             uri=dict(required=True),
             body=dict(required=True),
             method=dict(required=False, default="POST"),
-            debug=dict(required=False, default=False, choices=BOOLEANS)
+            debug=dict(required=False, default=False, type="bool")
          ),
         check_invalid_arguments=False
     )
