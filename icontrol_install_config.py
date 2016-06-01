@@ -15,6 +15,7 @@
      19 Feb    2016   |  1.7 - testing and document updates
      28 Mar    2016   |  1.8 - style changes to satisfy Phantom cyber compilation
      31 May    2016   |  2.0 - type="bool" on debug  Ansible 2.1
+     31 May    2016   |  2.1 - JSON expects double quotes around key, value pairs
 
 """
 
@@ -22,7 +23,7 @@ DOCUMENTATION = '''
 ---
 module: icontrol_install_config.py
 author: Joel W. King, World Wide Technology
-version_added: "2.0"
+version_added: "2.1"
 short_description: Ansible module to PUT data to the REST API of an F5 appliance
 description:
     - This module is a intended to be a demonstration and training module to update an F5 appliance configuration
@@ -205,6 +206,10 @@ class Connection(object):
                 body = json.loads(body)                        # Ansible 1.9
             except TypeError:
                 pass                                           # Ansible 2.0
+            except ValueError:
+                body = body.replace("'", "\"")                 # json expects double quotes around keys and values
+                body = json.loads(body)                        # Ansible 2.1 
+
         self.body = body                                       # Save for debugging
 
         if URI[0] != "/":
