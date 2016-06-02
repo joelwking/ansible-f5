@@ -16,6 +16,8 @@
      28 Mar    2016   |  1.8 - style changes to satisfy Phantom cyber compilation
      31 May    2016   |  2.0 - type="bool" on debug  Ansible 2.1
      31 May    2016   |  2.1 - JSON expects double quotes around key, value pairs
+      2 June   2016   |  2.2 - JSON 
+      2 June   2016   |  3.0 - cyber5 branch re-write
 
 """
 
@@ -23,7 +25,7 @@ DOCUMENTATION = '''
 ---
 module: icontrol_install_config.py
 author: Joel W. King, World Wide Technology
-version_added: "2.1"
+version_added: "3.0"
 short_description: Ansible module to PUT data to the REST API of an F5 appliance
 description:
     - This module is a intended to be a demonstration and training module to update an F5 appliance configuration
@@ -132,7 +134,7 @@ class Connection(object):
             and use PUTor PATCH to edit an existing configuration object with a JSON body.
         """
         URI = "%s%s%s" % (self.transport, self.appliance, URI)
-        body = json.dumps(body)
+        # body = json.dumps(body)                          Ansible 2.1
 
         try:
             r = requests.post(URI, auth=(self.username, self.password), data=body, headers=self.HEADER, verify=False)
@@ -155,7 +157,7 @@ class Connection(object):
 
         """
         URI = "%s%s%s" % (self.transport, self.appliance, URI)
-        body = json.dumps(body)
+        # body = json.dumps(body)                          Ansible 2.1
 
         try:
             r = requests.patch(URI, auth=(self.username, self.password), data=body, headers=self.HEADER, verify=False)
@@ -172,14 +174,19 @@ class Connection(object):
            if a POST fails with a 409, we modify the body by removing NAME and  and append to the URI,
            this logic makes those modifications and returns a revised URI and body
         """
+
         try:
-            name = body['name']
+            name = json.loads(body['name'])
         except KeyError:
             # if name doesn't exist we can't change anything, return what we were sent
+            return URI, body
+        except TypeError:
+            # body is now a JSON string, not a python object
             return URI, body
 
         # delete the name from the dictionary and add it to the URI
         del body['name']
+        body = json.dumps(body)                                  # put back as JSON data
         URI = "%s/%s" % (URI, name)
         self.body = body                                         # Save for debugging
 
@@ -199,11 +206,14 @@ class Connection(object):
         if "=" in body:
             try:
                 body = dict(x.split('=') for x in body.split(','))
+                body = json.dumps(body)                        # Ansible 2.1
             except ValueError:
                 return (1, False, "syntax error creating dictionary from string in body")
         else:
             try:
-                body = json.loads(body)                        # Ansible 1.9
+                if not isinstance(body, basestring):
+                    body = json.dumps(body)
+                # body = json.loads(body)                      Ansible 1.9 2.1
             except TypeError:
                 pass                                           # Ansible 2.0
             except ValueError:
@@ -269,7 +279,7 @@ def main():
             username=dict(required=True),
             password=dict(required=True),
             uri=dict(required=True),
-            body=dict(required=True),
+            body=dict(required=True, type='raw'),
             method=dict(required=False, default="POST"),
             debug=dict(required=False, default=False, type="bool")
          ),
