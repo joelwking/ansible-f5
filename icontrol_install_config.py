@@ -26,7 +26,7 @@ DOCUMENTATION = '''
 module: icontrol_install_config.py
 author: Joel W. King, World Wide Technology
 version_added: "3.0"
-short_description: Ansible module to PUT data to the REST API of an F5 appliance
+short_description: Ansible module to PUT, DELETE and PATCH (update) using the REST API of an F5 BIGIP
 description:
     - This module is a intended to be a demonstration and training module to update an F5 appliance configuration
       from Ansible. It provides similar functionallity to cURL, it is a first step in developing additional REST API
@@ -44,7 +44,7 @@ requirements:
 options:
     host:
         description:
-            - The IP address or hostname of the F5
+            - The IP address or hostname of the F5 BIGIP
         required: true
 
     username:
@@ -58,19 +58,17 @@ options:
         required: true
     uri:
         description:
-            - URI to PUT or POST
+            - URI
         required: true
     method:
         description:
-            - allow specify PATCH as an override, POST is the default
+            - PATCH (update), DELETE or POST. POST is the default.
         required: false
     body:
         description:
-            - body the data PUT or POSTed to the F5, it is a string representation of a dictionary,
-                 e.g. "monitor=/Common/bigip,name=DC2_LTM,partition=Common"
-              or a string representation of JSON
+            -  string representation of JSON
                  e.g. '{"name":"NEW_WIDEIP","pools":[{"name":"NEW_POOL","partition":"Common","order":0,"ratio":1}]}'
-
+        required: false
     debug:
         description:
             - debug switch
@@ -80,28 +78,6 @@ options:
 '''
 
 EXAMPLES = '''
-
-      ansible localhost -m icontrol_install_config
-                        -a "uri=/mgmt/tm/ltm/node, host=192.0.2.1, username=admin, password=redacted,
-                           body='name=bogturtle.example.net,address=192.0.2.15,partition=Common,rateLimit=disabled'"
-
-    - name: Update LTM node configuration, using PATCH
-      icontrol_install_config:
-          uri: "/mgmt/tm/ltm/node/bogturtle.example.net"
-        body:  "partition=Common,rateLimit=disabled"
-        host: "{{hostname}}"
-        method: PATCH
-        username: admin
-        password: "{{password}}"
-
-    - name: Create LTM Node using JSON, POST method is optional
-      icontrol_install_config:
-        uri: "/mgmt/tm/ltm/node"
-        body: '{"name":"bluebird.example.net","address":"192.0.2.17"}'
-        host: "{{hostname}}"
-        username: admin
-        password: "{{password}}"
-
 
 '''
 
@@ -126,6 +102,7 @@ class Connection(object):
         self.debug = debug
         self.HEADER = {"Content-Type": "application/json"}
         self.body = ""
+        self.response = ""
         return
 
     def genericPOST(self, URI, body):
@@ -291,21 +268,34 @@ def main():
                     password=module.params["password"],
                     debug=module.params["debug"])
 
-    uri, body = F5.standarize_body_url(module.params["uri"], module.params["body"])
+    functions = {"PATCH": update_config,
+                 "POST": install_config,
+                 "DELETE": delete_config}
+    try:
+        run_function = functions(module.params["method"].upper())
+    except KeyError:
+        module.fail_json(msg="Invalid method")
 
-    if module.params["method"].upper() == "PATCH":
-        code, changed, response = update_config(F5, uri, body)
+    run_function(module.params["uri"], module.params["body"])
+    if F5.success:
+        module.exit_json(changed=changed, content=response)   # FIX MEE
     else:
-        code, changed, response = install_config(F5, uri, body)
-    if code == 1:
-        module.fail_json(msg=response)
-    else:
-        module.exit_json(changed=changed, content=response)
-
-    return code
+        module.fail_json(msg=response) # FIX ME
 
 
-from ansible.module_utils.basic import *
+    # uri, body = F5.standarize_body_url(module.params["uri"], module.params["body"])
+
+    #  module.params["method"].upper() == "PATCH":
+    #    code, changed, response = update_config(F5, uri, body)
+    #else:
+    #    code, changed, response = install_config(F5, uri, body)
+    #if code == 1:
+    #    module.fail_json(msg=response)
+    #else:
+    #    module.exit_json(changed=changed, content=response)
+    #return code
+
 
 if __name__ == '__main__':
+    from ansible.module_utils.basic import *
     main()
