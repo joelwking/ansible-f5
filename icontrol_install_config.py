@@ -26,11 +26,17 @@ DOCUMENTATION = '''
 module: icontrol_install_config.py
 author: Joel W. King, World Wide Technology
 version_added: "3.0"
-short_description: Ansible module to PUT, DELETE and PATCH (update) using the REST API of an F5 BIGIP
+short_description: Ansible module to PUT, DELETE and PATCH (update) using the REST API of an F5 BIG_IP
 description:
-    - This module is a intended to be a demonstration and training module to update an F5 appliance configuration
-      from Ansible. It provides similar functionallity to cURL, it is a first step in developing additional REST API
-      capabilities using iControl REST API
+    - This module is a intended to be a demonstration and training module to update an F5 BIG_IP configuration
+      from Ansible playbooks. It is intended to provide means where the URL and body (in JSON) from Chrome
+      Postman or the cURL examples in the F5 API documentation can be used in a playbook to demonstrate how to 
+      create playbooks. 
+
+      If the user has specified POST (which is the default value) and the object exists, we modify the URL and
+      body and issue a PATCH instead.
+
+      This module is also used in the Phantom Cyber F5 app.
 
 
 references:
@@ -44,7 +50,7 @@ requirements:
 options:
     host:
         description:
-            - The IP address or hostname of the F5 BIGIP
+            - The IP address or hostname of the F5 BIG_IP
         required: true
 
     username:
@@ -71,7 +77,7 @@ options:
         required: false
     debug:
         description:
-            - debug switch
+            - debug  switch, for future use.
         required: false
 
 
@@ -79,174 +85,243 @@ options:
 
 EXAMPLES = '''
 
+  - name: 20 Create LTM Node (default method of POST)
+    icontrol_install_config:
+      uri: "/mgmt/tm/ltm/node"
+      body: '{"name": "foo", "address": "192.0.2.63"}'
+      host: "{{ltm.hostname}}"
+      username: admin
+      password: "{{password}}"
+
+  - name: 30 Update LTM Node using PATCH
+    icontrol_install_config:
+      uri: "/mgmt/tm/ltm/node/foo"
+      body: '{"description": "the quick brown fox jumped."}'
+      method: PATCH
+      host: "{{ltm.hostname}}"
+      username: admin
+      password: "{{password}}"
+
+  - name: 41 Delete LTM Node, body not specified
+    icontrol_install_config:
+      uri: "/mgmt/tm/ltm/node/bar"
+      method: DELETE
+      host: "{{ltm.hostname}}"
+      username: admin
+      password: "{{password}}"
+
+  - name: 50 Create LTM Pool, specify POST method
+    icontrol_install_config:
+      uri: "/mgmt/tm/ltm/pool/"
+      body: '{"name": "NEW_POOL", "monitor": "/Common/http"}'
+      method: "POST"
+      host: "{{ltm.hostname}}"
+      username: admin
+      password: "{{password}}"
+
 '''
 
 import json
 import requests
+import requests.packages.urllib3
+requests.packages.urllib3.disable_warnings()
 
 # ---------------------------------------------------------------------------
 # F5 icontrol REST Connection Class
 # ---------------------------------------------------------------------------
 
 
-class Connection(object):
+class BIG_IP(object):
     """
-      Connection class for Python to F5 REST calls
+      Connection class for Python to F5 BIG-IP iControl REST calls
 
     """
-    def __init__(self, host="192.0.2.1", username="admin", password="redacted", debug=False):
-        self.transport = "https://"
-        self.appliance = host
+    HEADER = {"Content-Type": "application/json"}
+    TRANSPORT = "https://"
+
+    def __init__(self, host="192.0.2.1", username="admin", password="redacted", uri="/", method="POST", debug=False):
+        self.BIG_IP_host = host
         self.username = username
         self.password = password
+        self.uri = self.validate_uri(uri)
+        self.method = method
+        self.response = None
+        self.status_code = 0
+        self.changed = False
         self.debug = debug
-        self.HEADER = {"Content-Type": "application/json"}
-        self.body = ""
-        self.response = ""
+
         return
 
-    def genericPOST(self, URI, body):
-        """
-            Use POST to create a new configuration object from a JSON body,
-            and use PUTor PATCH to edit an existing configuration object with a JSON body.
-        """
-        URI = "%s%s%s" % (self.transport, self.appliance, URI)
-        # body = json.dumps(body)                          Ansible 2.1
 
+    def validate_uri(self, uri):
+        " make certain the uri has a leading and trailing slash"
+
+        if uri[0] != "/":                                  # check leading slash
+            uri = "/" + uri
+
+        if uri[-1] == "/":                                 # check trailing slash
+            pass
+        else:
+            uri = uri + "/"
+
+        return uri
+
+
+    def genericDELETE(self):
+        """ Delete a resource from F5 BIG_IP, return True if deleted successfully, return False if
+            not. A return code of 200 does not populate the response, a 404 errors means the node
+            was not found, but the response is populated.
+            To delete a virtual server named foo, use https://192.0.2.1/mgmt/tm/ltm/virtual/foo
+        """
+        URI = "%s%s%s" % (BIG_IP.TRANSPORT, self.BIG_IP_host, self.uri)
         try:
-            r = requests.post(URI, auth=(self.username, self.password), data=body, headers=self.HEADER, verify=False)
+            r = requests.delete(URI, auth=(self.username, self.password), headers=BIG_IP.HEADER, verify=False)
         except requests.ConnectionError as e:
-            return ("ConnectionError", e)
+            self.status_code = 599
+            self.response = str(e)
+            return None
+        self.status_code = r.status_code                   
         try:
-            content = json.loads(r.content)
-        except ValueError as e:
-            content = "F5 does not populate content in all conditions"
-        return (r.status_code, content)
+            self.response = r.json()                       # r.json() returns a dictionary 
+        except ValueError:                                 # If you get a 200, throws a ValueError exception
+            self.response = None                           # there may not be a response
 
-    def genericPATCH(self, URI, body):
+        if r.status_code == 200:                           # a 200 means we successfully deleted
+            self.changed = True                            # we changed the state
+            return True
+        if r.status_code == 404:                           # a 404 error means the requested node was not found
+            return True                                    # because this is the desired state, return True 
+        return False
+
+
+    def genericGET(self, uri=None):
+        """ Issue a GET request and return the results
+            We are using requests to issue a command similar to the following:
+              curl -k -u admin:redacted -X GET https://192.0.2.1/mgmt/tm/ltm/virtual
+        """
+        if not uri:
+            uri = self.uri
+
+        URI = "%s%s%s" % (BIG_IP.TRANSPORT, self.BIG_IP_host, uri)
+        try:
+            r = requests.get(URI, auth=(self.username, self.password), headers=BIG_IP.HEADER, verify=False)
+        except requests.ConnectionError as e:
+            self.status_code = 599
+            self.response = str(e)
+            return None
+        self.status_code = r.status_code
+        try:
+            self.response = r.json()                       # r.json() returns a dictionary 
+        except ValueError:                                 # If you get a 404 error, throws a ValueError exception
+           self.response = None
+
+        if r.status_code == 200:
+            return True
+        return False
+
+
+    def genericPOST(self, body):
+        """
+            Use POST to create a new configuration object from a JSON body.
+        """
+        URI = "%s%s%s" % (BIG_IP.TRANSPORT, self.BIG_IP_host, self.uri)
+        try:
+            r = requests.post(URI, auth=(self.username, self.password), data=body, headers=BIG_IP.HEADER, verify=False)
+        except requests.ConnectionError as e:
+            self.status_code = 599
+            self.response = str(e)
+            return None
+        self.status_code = r.status_code
+        try:
+            self.response = r.json()
+        except ValueError:
+            self.response = None
+
+        if r.status_code == 200:
+            self.changed = True
+            return True
+        return False
+        
+
+    def genericPATCH(self, body):
         """
            PATCH to edit an existing configuration object with a JSON body.
-           Need to formulate the URL with the name as part of the URL.
-           Remove NAME from the body and attempt to PATCH, it may return a 400,
-           indicating that there are elements in the body which cannot be present to
-           update the resource. In that case, we will not fail, but return that there
-           is no change to the object.
-
+           Need to formulate the URL with the name as part of the URL and NAME must not be in the body
         """
-        URI = "%s%s%s" % (self.transport, self.appliance, URI)
-        # body = json.dumps(body)                          Ansible 2.1
-
+        URI = "%s%s%s" % (BIG_IP.TRANSPORT, self.BIG_IP_host, self.uri)
         try:
-            r = requests.patch(URI, auth=(self.username, self.password), data=body, headers=self.HEADER, verify=False)
+            r = requests.patch(URI, auth=(self.username, self.password), data=body, headers=BIG_IP.HEADER, verify=False)
         except requests.ConnectionError as e:
-            return ("ConnectionError", e)
+            self.status_code = 599
+            self.response = str(e)
+            return None
+        self.status_code = r.status_code
         try:
-            content = json.loads(r.content)
-        except ValueError as e:
-            content = "F5 does not populate content in all conditions"
-        return (r.status_code, content)
+            self.response = r.json()
+        except ValueError:
+            self.response = None
 
-    def fix_body_url(self, URI, body):
+        if r.status_code == 200:
+            self.changed = True
+            return True
+        return False
+
+
+    def node_exists(self, body):
+        """ Return true or false if the node specified in the URL exists- status_code is a 404 if not found
+            Need to formulate a new URL by determining the name from the body and appending it to the URL
         """
-           if a POST fails with a 409, we modify the body by removing NAME and  and append to the URI,
-           this logic makes those modifications and returns a revised URI and body
-        """
+        try:
+            body = json.loads(body)
+        except ValueError:
+            return None
 
         try:
-            name = json.loads(body['name'])
+            name = body["name"]
         except KeyError:
-            # if name doesn't exist we can't change anything, return what we were sent
-            return URI, body
-        except TypeError:
-            # body is now a JSON string, not a python object
-            return URI, body
+            return None
 
-        # delete the name from the dictionary and add it to the URI
-        del body['name']
-        body = json.dumps(body)                                  # put back as JSON data
-        URI = "%s/%s" % (URI, name)
-        self.body = body                                         # Save for debugging
-
-        return URI, body
-
-    def standarize_body_url(self, URI, body):
-        """
-            In your playbook, the body is a string representation of a dictionary,
-                body: "name=NEW_POOL,monitor=/Common/http"
-
-            or a string representation of JSON
-                body: '{"name":"NEW_WIDEIP", "pools":[{"name":"NEW_POOL","partition":"Common","order":0,"ratio":1}]}'
-
-            to determine which format, we will test for an equal sign.
-            Add a slash to the beginning of the URI if missing.
-        """
-        if "=" in body:
-            try:
-                body = dict(x.split('=') for x in body.split(','))
-                body = json.dumps(body)                        # Ansible 2.1
-            except ValueError:
-                return (1, False, "syntax error creating dictionary from string in body")
-        else:
-            try:
-                if not isinstance(body, basestring):
-                    body = json.dumps(body)
-                # body = json.loads(body)                      Ansible 1.9 2.1
-            except TypeError:
-                pass                                           # Ansible 2.0
-            except ValueError:
-                body = body.replace("'", "\"")                 # json expects double quotes around keys and values
-                body = json.loads(body)                        # Ansible 2.1 
-
-        self.body = body                                       # Save for debugging
-
-        if URI[0] != "/":
-            URI = "/" + URI
-
-        return URI, body
+        uri = self.uri + name                              # Now create a new URL with the uri and the name from the body.
+        return self.genericGET(uri=uri)
 
 
-# ---------------------------------------------------------------------------
-# install_config
-# ---------------------------------------------------------------------------
+    def modify_url_and_body(self, body):
+        "Manipulate the URL and body to permit issueing a PATCH"
 
-def install_config(F5, uri, body):
+        try:
+            body = json.loads(body)                        # JSON string to dictiionary
+        except ValueError:
+            pass                                           # body assumed to be a dictionary
+
+        self.uri = self.uri + body['name']                 # add name to uri
+        del body['name']                                   # delete name from dictionary
+        body = json.dumps(body)                            # dictionary to JSON string
+        
+        return body
+
+# ========================================================
+
+def install_config(F5, body):
     """
-        Issue a POST for a new configuration, if that fails attempt to PATCH, which
-        is updating an existing configuration
-
-    """
-
-    rc, response = F5.genericPOST(uri, body)              # Attempt to create a new object,
-    if rc == 409:                                         # 409 means it exists, attempt a PATCH, it  modifies an existing object
-        uri, body = F5.fix_body_url(uri, body)            # remove the 'name' from the body and change the URL
-        rc, response = F5.genericPATCH(uri, body)
-        if rc == 400:                                     # 400 means the body contained elements we cannot update
-            return (0, False, "rc %s: %s" % (rc, response))
-
-    if rc == 200:
-        return (0, True, "rc %s: %s" % (rc, response))
+        If the node exists, attempt to issue PATCH, otherwise, issue POST. User has either specified
+        a POST or defaulted to POST.
+    """    
+    if F5.node_exists(body):
+        body = F5.modify_url_and_body(body)
+        return F5.genericPATCH(body)
     else:
-        return (1, False, "rc %s: %s" % (rc, response))
-
-# ---------------------------------------------------------------------------
-# update_config
-# ---------------------------------------------------------------------------
+        return F5.genericPOST(body)
 
 
-def update_config(F5, uri, body):
-    """"
-        we were called with a PATCH method, attempt to update the configuration
-    """
-    rc, response = F5.genericPATCH(uri, body)
-    if rc == 200:
-        return (0, True, "rc %s: %s" % (rc, response))
-    else:
-        return (1, False, "rc %s: %s" % (rc, response))
+def update_config(F5, body):
+    " Called with a PATCH method, attempt to update the configuration"
+    return F5.genericPATCH(body)
 
 
-# ---------------------------------------------------------------------------
-# MAIN
-# ---------------------------------------------------------------------------
+def delete_config(F5, body):
+    " Attempt to delete the configuration specified by the URL, ignore the body"
+    return F5.genericDELETE()
+
 
 def main():
     "   "
@@ -256,46 +331,43 @@ def main():
             username=dict(required=True),
             password=dict(required=True),
             uri=dict(required=True),
-            body=dict(required=True, type='raw'),
+            body=dict(required=False, default="{}", type="raw"),
             method=dict(required=False, default="POST"),
             debug=dict(required=False, default=False, type="bool")
          ),
         check_invalid_arguments=False
     )
 
-    F5 = Connection(host=module.params["host"],
-                    username=module.params["username"],
-                    password=module.params["password"],
-                    debug=module.params["debug"])
+    F5 = BIG_IP(host=module.params["host"],
+                username=module.params["username"],
+                password=module.params["password"],
+                uri=module.params["uri"],
+                method=module.params["method"].upper(),
+                debug=module.params["debug"])
 
+    # Case structure of the supported functions
     functions = {"PATCH": update_config,
                  "POST": install_config,
                  "DELETE": delete_config}
+
     try:
-        run_function = functions(module.params["method"].upper())
+        run_function = functions[module.params["method"].upper()]
     except KeyError:
         module.fail_json(msg="Invalid method")
 
-    run_function(module.params["uri"], module.params["body"])
-    if F5.success:
-        module.exit_json(changed=changed, content=response)   # FIX MEE
+    ret_code = run_function(F5, module.params["body"])
+
+    if ret_code:
+        module.exit_json(changed=F5.changed, content=F5.response)
     else:
-        module.fail_json(msg=response) # FIX ME
+        module.fail_json(msg="%s %s" % (F5.status_code, F5.response))
+    return
 
-
-    # uri, body = F5.standarize_body_url(module.params["uri"], module.params["body"])
-
-    #  module.params["method"].upper() == "PATCH":
-    #    code, changed, response = update_config(F5, uri, body)
-    #else:
-    #    code, changed, response = install_config(F5, uri, body)
-    #if code == 1:
-    #    module.fail_json(msg=response)
-    #else:
-    #    module.exit_json(changed=changed, content=response)
-    #return code
-
+try:
+    from ansible.module_utils.basic import *
+except ImportError:
+    pass                                                   # may be using outside Ansible framework
 
 if __name__ == '__main__':
-    from ansible.module_utils.basic import *
+    " Main program logic."
     main()
