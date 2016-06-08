@@ -18,6 +18,7 @@
      31 May    2016   |  2.1 - JSON expects double quotes around key, value pairs
       2 June   2016   |  2.2 - JSON 
       2 June   2016   |  3.0 - cyber5 branch re-write
+      8 June   2016   |  3.1 - modified trailing slash logic
 
 """
 
@@ -25,7 +26,7 @@ DOCUMENTATION = '''
 ---
 module: icontrol_install_config.py
 author: Joel W. King, World Wide Technology
-version_added: "3.0"
+version_added: "3.1"
 short_description: Ansible module to PUT, DELETE and PATCH (update) using the REST API of an F5 BIG_IP
 description:
     - This module is a intended to be a demonstration and training module to update an F5 BIG_IP configuration
@@ -159,9 +160,7 @@ class BIG_IP(object):
         if uri[0] != "/":                                  # check leading slash
             uri = "/" + uri
 
-        if uri[-1] == "/":                                 # check trailing slash
-            pass
-        else:
+        if uri[-1] != "/":                                 # check trailing slash
             uri = uri + "/"
 
         return uri
