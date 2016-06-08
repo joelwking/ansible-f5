@@ -19,7 +19,6 @@
   - name: Save F5 config
     icontrol_install_config:
       uri: "/mgmt/tm/sys/config"
-      # body: "command=save"       # Either body format will work
       body: '{"command":"save"}'
       method: POST                 # method is optional
       host: "10.255.68.18"
