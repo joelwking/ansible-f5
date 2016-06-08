@@ -19,6 +19,7 @@
       2 June   2016   |  2.2 - JSON 
       2 June   2016   |  3.0 - cyber5 branch re-write
       8 June   2016   |  3.1 - modified trailing slash logic
+      8 June   2016   |  3.2 - body can be either a string or a dictionary added isinstance
 
 """
 
@@ -26,7 +27,7 @@ DOCUMENTATION = '''
 ---
 module: icontrol_install_config.py
 author: Joel W. King, World Wide Technology
-version_added: "3.1"
+version_added: "3.2"
 short_description: Ansible module to PUT, DELETE and PATCH (update) using the REST API of an F5 BIG_IP
 description:
     - This module is a intended to be a demonstration and training module to update an F5 BIG_IP configuration
@@ -354,7 +355,11 @@ def main():
     except KeyError:
         module.fail_json(msg="Invalid method")
 
-    ret_code = run_function(F5, module.params["body"])
+    body = module.params["body"]                           # body is a str when body: '{"name": "foo", "address": "192.0.2.63"}'
+    if isinstance(body, dict):                             # body is a dict when body: '{"name": "{{item.name}}"}'
+        body = json.dumps(body)
+
+    ret_code = run_function(F5, body)
 
     if ret_code:
         module.exit_json(changed=F5.changed, content=F5.response)
