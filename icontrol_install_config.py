@@ -16,10 +16,11 @@
      28 Mar    2016   |  1.8 - style changes to satisfy Phantom cyber compilation
      31 May    2016   |  2.0 - type="bool" on debug  Ansible 2.1
      31 May    2016   |  2.1 - JSON expects double quotes around key, value pairs
-      2 June   2016   |  2.2 - JSON 
+      2 June   2016   |  2.2 - JSON
       2 June   2016   |  3.0 - cyber5 branch re-write
       8 June   2016   |  3.1 - modified trailing slash logic
       8 June   2016   |  3.2 - body can be either a string or a dictionary added isinstance
+      9 June   2016   |  3.3 - documentation update, corrected default value for body, flake8 style updates
 
 """
 
@@ -27,13 +28,13 @@ DOCUMENTATION = '''
 ---
 module: icontrol_install_config.py
 author: Joel W. King, World Wide Technology
-version_added: "3.2"
+version_added: "3.3"
 short_description: Ansible module to PUT, DELETE and PATCH (update) using the REST API of an F5 BIG_IP
 description:
     - This module is a intended to be a demonstration and training module to update an F5 BIG_IP configuration
       from Ansible playbooks. It is intended to provide means where the URL and body (in JSON) from Chrome
-      Postman or the cURL examples in the F5 API documentation can be used in a playbook to demonstrate how to 
-      create playbooks. 
+      Postman or the cURL examples in the F5 API documentation can be used in a playbook to demonstrate how to
+      create playbooks.
 
       If the user has specified POST (which is the default value) and the object exists, we modify the URL and
       body and issue a PATCH instead.
@@ -121,6 +122,22 @@ EXAMPLES = '''
       username: admin
       password: "{{password}}"
 
+    # Given these variables, note how the JSON string in body is coded
+    spreadsheet:
+        - name: foo
+          address: "192.0.2.65"
+    boolean_true: true
+
+  - name: 80 Test body with boolean
+    icontrol_install_config:
+      uri: "/mgmt/tm/net/vlan/~Common~1.3/interfaces"
+      # Note the string variable for name has double quotes, the boolean value of tagged does not
+      body: '{"name":"{{spreadsheet[0].name}}","tagged":{{boolean_true}}}'
+      method: POST
+      host: "{{ltm.hostname}}"
+      username: admin
+      password: "{{password}}"
+
 '''
 
 import json
@@ -154,7 +171,6 @@ class BIG_IP(object):
 
         return
 
-
     def validate_uri(self, uri):
         " make certain the uri has a leading and trailing slash"
 
@@ -165,7 +181,6 @@ class BIG_IP(object):
             uri = uri + "/"
 
         return uri
-
 
     def genericDELETE(self):
         """ Delete a resource from F5 BIG_IP, return True if deleted successfully, return False if
@@ -180,9 +195,9 @@ class BIG_IP(object):
             self.status_code = 599
             self.response = str(e)
             return None
-        self.status_code = r.status_code                   
+        self.status_code = r.status_code
         try:
-            self.response = r.json()                       # r.json() returns a dictionary 
+            self.response = r.json()                       # r.json() returns a dictionary
         except ValueError:                                 # If you get a 200, throws a ValueError exception
             self.response = None                           # there may not be a response
 
@@ -190,9 +205,8 @@ class BIG_IP(object):
             self.changed = True                            # we changed the state
             return True
         if r.status_code == 404:                           # a 404 error means the requested node was not found
-            return True                                    # because this is the desired state, return True 
+            return True                                    # because this is the desired state, return True
         return False
-
 
     def genericGET(self, uri=None):
         """ Issue a GET request and return the results
@@ -211,14 +225,13 @@ class BIG_IP(object):
             return None
         self.status_code = r.status_code
         try:
-            self.response = r.json()                       # r.json() returns a dictionary 
+            self.response = r.json()                       # r.json() returns a dictionary
         except ValueError:                                 # If you get a 404 error, throws a ValueError exception
-           self.response = None
+            self.response = None
 
         if r.status_code == 200:
             return True
         return False
-
 
     def genericPOST(self, body):
         """
@@ -241,7 +254,6 @@ class BIG_IP(object):
             self.changed = True
             return True
         return False
-        
 
     def genericPATCH(self, body):
         """
@@ -266,7 +278,6 @@ class BIG_IP(object):
             return True
         return False
 
-
     def node_exists(self, body):
         """ Return true or false if the node specified in the URL exists- status_code is a 404 if not found
             Need to formulate a new URL by determining the name from the body and appending it to the URL
@@ -284,7 +295,6 @@ class BIG_IP(object):
         uri = self.uri + name                              # Now create a new URL with the uri and the name from the body.
         return self.genericGET(uri=uri)
 
-
     def modify_url_and_body(self, body):
         "Manipulate the URL and body to permit issueing a PATCH"
 
@@ -296,16 +306,19 @@ class BIG_IP(object):
         self.uri = self.uri + body['name']                 # add name to uri
         del body['name']                                   # delete name from dictionary
         body = json.dumps(body)                            # dictionary to JSON string
-        
+
         return body
 
-# ========================================================
+# ---------------------------------------------------------------------------
+# icontrol_install_config methods
+# ---------------------------------------------------------------------------
+
 
 def install_config(F5, body):
     """
         If the node exists, attempt to issue PATCH, otherwise, issue POST. User has either specified
         a POST or defaulted to POST.
-    """    
+    """
     if F5.node_exists(body):
         body = F5.modify_url_and_body(body)
         return F5.genericPATCH(body)
@@ -331,10 +344,10 @@ def main():
             username=dict(required=True),
             password=dict(required=True),
             uri=dict(required=True),
-            body=dict(required=False, default="{}", type="raw"),
+            body=dict(required=False, default=dict(), type="raw"),
             method=dict(required=False, default="POST"),
             debug=dict(required=False, default=False, type="bool")
-         ),
+          ),
         check_invalid_arguments=False
     )
 
@@ -370,7 +383,7 @@ def main():
 try:
     from ansible.module_utils.basic import *
 except ImportError:
-    pass                                                   # may be using outside Ansible framework
+    pass                                                   # Also used outside Ansible framework
 
 if __name__ == '__main__':
     " Main program logic."
