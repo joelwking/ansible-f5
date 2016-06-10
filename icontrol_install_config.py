@@ -21,6 +21,7 @@
       8 June   2016   |  3.1 - modified trailing slash logic
       8 June   2016   |  3.2 - body can be either a string or a dictionary added isinstance
       9 June   2016   |  3.3 - documentation update, corrected default value for body, flake8 style updates
+     10 June   2016   |  3.4 - added _POST_ method option, which does not fall back to PATCH
 
 """
 
@@ -29,7 +30,7 @@ DOCUMENTATION = '''
 module: icontrol_install_config.py
 author: Joel W. King, World Wide Technology
 version_added: "3.3"
-short_description: Ansible module to PUT, DELETE and PATCH (update) using the REST API of an F5 BIG_IP
+short_description: Ansible module to POST, DELETE and PATCH (update) using the REST API of an F5 BIG_IP
 description:
     - This module is a intended to be a demonstration and training module to update an F5 BIG_IP configuration
       from Ansible playbooks. It is intended to provide means where the URL and body (in JSON) from Chrome
@@ -37,7 +38,7 @@ description:
       create playbooks.
 
       If the user has specified POST (which is the default value) and the object exists, we modify the URL and
-      body and issue a PATCH instead.
+      body and issue a PATCH instead. If _POST_ is specified as the method, do not fallback to PATCH.
 
       This module is also used in the Phantom Cyber F5 app.
 
@@ -71,7 +72,7 @@ options:
         required: true
     method:
         description:
-            - PATCH (update), DELETE or POST. POST is the default.
+            - PATCH (update), DELETE, _POST_ or POST. POST is the default.
         required: false
     body:
         description:
@@ -95,6 +96,16 @@ EXAMPLES = '''
       host: "{{ltm.hostname}}"
       username: admin
       password: "{{password}}"
+
+  - name: 21 Create LTM Node (_POST_)
+    icontrol_install_config:
+      uri: "/mgmt/tm/ltm/node"
+      body: '{"name":"{{item.name}}", "address":"{{item.address}}" }'
+      method: "_post_"
+      host: "{{ltm.hostname}}"
+      username: admin
+      password: "{{password}}"
+    with_items: "{{spreadsheet}}"
 
   - name: 30 Update LTM Node using PATCH
     icontrol_install_config:
@@ -335,6 +346,10 @@ def delete_config(F5, body):
     " Attempt to delete the configuration specified by the URL, ignore the body"
     return F5.genericDELETE()
 
+def POST_config(F5, body):
+    " POST command which does not fail back to PATCH if node exists"
+    return F5.genericPOST(body)
+
 
 def main():
     "   "
@@ -361,6 +376,7 @@ def main():
     # Case structure of the supported functions
     functions = {"PATCH": update_config,
                  "POST": install_config,
+                 "_POST_": POST_config,
                  "DELETE": delete_config}
 
     try:
