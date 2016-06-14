@@ -22,6 +22,7 @@
       8 June   2016   |  3.2 - body can be either a string or a dictionary added isinstance
       9 June   2016   |  3.3 - documentation update, corrected default value for body, flake8 style updates
      10 June   2016   |  3.4 - added _POST_ method option, which does not fall back to PATCH
+     14 June   2016   |  3.5 - flake8 cosmetic changes
 
 """
 
@@ -29,7 +30,7 @@ DOCUMENTATION = '''
 ---
 module: icontrol_install_config.py
 author: Joel W. King, World Wide Technology
-version_added: "3.4"
+version_added: "3.5"
 short_description: Ansible module to POST, DELETE and PATCH (update) using the REST API of an F5 BIG_IP
 description:
     - This module is a intended to be a demonstration and training module to update an F5 BIG_IP configuration
@@ -345,6 +346,7 @@ def update_config(F5, body):
 def delete_config(F5, body):
     " Attempt to delete the configuration specified by the URL, ignore the body"
     return F5.genericDELETE()
+
 
 def POST_config(F5, body):
     " POST command which does not fail back to PATCH if node exists"
