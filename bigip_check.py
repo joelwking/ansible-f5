@@ -29,7 +29,7 @@ requirements:
 options:
     host:
         description:
-            - IP address (or hostname) of PAN-OS device
+            - IP address (or hostname) of BIG_IP device
         required: true
 
     password:
