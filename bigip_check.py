@@ -7,6 +7,7 @@
      Revision history:
 
      6 December 2016  |  1.0 - initial release
+     14 December 2016 |  1.1 - Output device information
 
 """
 DOCUMENTATION = '''
@@ -15,13 +16,14 @@ DOCUMENTATION = '''
 
 module: bigip_check
 author: Joel W. King, World Wide Technology
-version_added: "1.0"
+version_added: "1.1"
 short_description: check if BIG_IP device is ready for configuration
 
 description:
     - Check if the BIG_IP device is responds to iControl API calls, optionally save the config and reload the device.
     - The timeout value is the dead interval, the interval value is a time between connection attempts.
     - Using the default values of 10 and 40, the four attempts are made, 10 seconds apart.
+    - Output are ansible facts describing the device.
 
 requirements:
     -  ansible-f5/icontrol_install_config.py from https://github.com/joelwking
@@ -81,6 +83,9 @@ EXAMPLES = '''
        timeout: 40
        interval: 10
 
+  - name: show facts output
+    debug: msg="version is {{bigip.version}} {{bigip.marketingName}} {{bigip.build}} {{bigip.chassisId}}"
+
 '''
 
 class Check(object):
@@ -111,7 +116,7 @@ class Check(object):
         and in the 'items' look for 'name' 'tmm' and 'mcpd' and 'isActive' of true
 
         """
-        device.uri =  device.validate_uri("/mgmt/tm/sys/management-ip/")
+        device.uri =  device.validate_uri("/mgmt/tm/cm/device/")
         return device.genericGET()
 
     def device_changed(self):
@@ -119,6 +124,14 @@ class Check(object):
         if self.changed:
             return True
         return False
+
+    def build_facts(self, response):
+        "Format the output of the module as Ansible facts"
+        try:
+            return response["items"][0]
+        except:
+            return dict(error="Response not valid")
+
 
 def main():
     module = AnsibleModule(
@@ -156,7 +169,8 @@ def main():
 
     for increment in range(0, module.params["timeout"], module.params["interval"]):
         if me.test_ready(f5):
-            module.exit_json(changed=me.device_changed(), msg="Ready", response=f5.response)         
+            facts = me.build_facts(f5.response)
+            module.exit_json(changed=me.device_changed(), msg="Ready", ansible_facts=dict(bigip=facts))         
         time.sleep(module.params["interval"])
 
     module.fail_json(msg="Device not ready")
