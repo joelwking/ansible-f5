@@ -7,6 +7,7 @@
      Revision history:
      2 December 2015  |  1.0 - initial release
      3 December 2015  |  1.1 - cosmetic and best practices updates.
+     14 December 2016 |  1.2 - address name conflict with 'items'
 
  
 """
@@ -15,7 +16,7 @@ DOCUMENTATION = '''
 ---
 module: icontrol_gather_facts
 author: Joel W. King, World Wide Technology
-version_added: "1.0"
+version_added: "1.2"
 short_description: Gathers Ansible facts from F5 appliance
 description:
     - This module issues a REST API call to an F5 appliance and returns facts to the playbook for subsequent tasks.
@@ -60,22 +61,17 @@ options:
 
 EXAMPLES = '''
 
-    Module
-
-    $ ansible localhost -m icontrol_gather_facts -a "uri=/mgmt/tm/ltm/virtual host=192.0.2.1 username=admin password=redacted"
-
-    Playbook
-
     - name: Get facts from an F5
       icontrol_gather_facts:
         uri: "/mgmt/tm/ltm/virtual"
-        host: 192.0.2.1
+        host: "{{inventory_hostname}}"
         username: admin
-        password: redacted
+        password: "{{password}}"
 
-    - name: debug output the facts gathered
-      debug: msg=" {{item.name}} {{item.pool}} {{item.destination}}"
-      with_items: items
+    - name: debug output
+      debug: msg="{{item.name}} {{item.fullPath}} {{item.pool}}"
+      with_items: "{{bigip_items}}"
+
 
 '''
 
@@ -127,14 +123,17 @@ def get_facts(F5, uri):
     """ 
         Issue a GET of the URI specified to the F5 appliance and return the result as facts.
         If the URI must have a slash as the first character, add it if missing
+
+        In Ansible 2.2 found name clashing
+        http://stackoverflow.com/questions/40281706/cant-read-custom-facts-with-list-array-of-items
     """
-    result = { 'ansible_facts': {} } 
+    result = { 'ansible_facts': {} }
                      
     if uri[0] != "/":
         uri = "/" + uri
     
-    status, response = F5.genericGET(uri)
-    result["ansible_facts"] = response
+    status, result["ansible_facts"]  = F5.genericGET(uri)
+    result["ansible_facts"]["bigip_items"] = result["ansible_facts"].pop("items")   # replace key name of 'items' with 'bigip_items'
     return status, result
 
 # ---------------------------------------------------------------------------
@@ -167,5 +166,3 @@ def main():
 from ansible.module_utils.basic import *
 if __name__ == '__main__':
     main()
-
-
