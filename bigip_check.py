@@ -8,6 +8,7 @@
 
      6 December 2016  |  1.0 - initial release
      14 December 2016 |  1.1 - Output device information
+     14 December 2016 |  1.2 - added import logic for Ansible Tower
 
 """
 DOCUMENTATION = '''
@@ -16,7 +17,7 @@ DOCUMENTATION = '''
 
 module: bigip_check
 author: Joel W. King, World Wide Technology
-version_added: "1.1"
+version_added: "1.2"
 short_description: check if BIG_IP device is ready for configuration
 
 description:
@@ -145,6 +146,14 @@ def main():
         interval=dict(default=10, type='int')
         )
     )
+
+    #  When running under Ansible Tower, put this module in /usr/share/ansbile
+    #  and modify your ansible.cfg file to include
+    #   library = /usr/share/ansible/
+    try:
+        import icontrol_install_config as iControl
+    except ImportError:
+        sys.path.append("/usr/share/ansible")
 
     try:
         import icontrol_install_config as iControl
