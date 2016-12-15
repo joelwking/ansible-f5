@@ -13,3 +13,6 @@ To get started, there is a playbook which simply saves the running config. Execu
 ./save_F5_config.yml --ask-vault
 </pre>
 provided you have a file named passwords.yml with the variable "password" encrypted with Ansible Vault
+
+## bigip_check
+This module is used to optionally save the running config and reload the Big-IP device, and check if reachable. It also returns ansible_facts describing the characteristics of the device; name, platformId, version, timeZone, etc.
