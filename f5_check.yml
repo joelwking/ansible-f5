@@ -1,0 +1,92 @@
+#!/usr/bin/ansible-playbook
+---
+#
+#      Copyright (c) 2017 World Wide Technology, Inc.
+#      All rights reserved.
+#
+#      author: Joel W. King, World Wide Technology
+#
+#      Use this environmental variable to store the vault password
+#      with the following line in your .profile
+#         export ANSIBLE_VAULT_PASSWORD_FILE="$HOME/ansible/playbooks/vault_pass.txt"
+#
+#      $ ls -salt vault_pass.txt
+#      4 -r-------- 1 administrator administrator 9 Dec 18 14:16 vault_pass.txt
+#      $ cat ./vault_pass.txt
+#      VAultPASSWORD
+#
+#      Sample executions:
+#        ./f5_check.yml --tags "check,facts"
+#        ./f5_check.yml --tags "check,facts,debug"
+#
+- name: f5_bigip_check.yml
+  connection: local
+  hosts: vf5-mediawiki.sandbox.wwtatc.local 
+  gather_facts: true 
+
+  vars:
+    minute: 60
+
+  handlers:
+    - name: foo 
+      debug: msg="Runs when notify directive is specified and changed flag is set"
+
+  tasks:
+  - name: set fact example
+    set_fact:
+      future_time: "{{ansible_date_time.epoch | int + minute}}"  # convert string to int, add a minute
+    tags:
+      - facts 
+
+  - name: debug set_fact
+    debug: msg="A time in the future {{future_time}}"
+    tags: facts
+
+  - name: Decrypt the password file
+    include_vars: "./passwords.yml"
+    tags:
+      - check
+
+  - name: check if the big_ip is ready 
+    bigip_check:
+       host: "{{inventory_hostname}}"
+       password: "{{password}}"
+       username: admin    # these  arguments are optional, default values shown
+       reload: false 
+       save_config: false 
+       timeout: 40
+       interval: 10
+    tags: 
+      - check
+
+  - name: show facts output
+    debug: msg="version is {{bigip.version}} {{bigip.marketingName}} {{bigip.build}} {{bigip.chassisId}}"
+    tags: debug
+
+  - name: Get facts from an F5
+    icontrol_gather_facts:
+        uri: "/mgmt/tm/ltm/virtual"
+        host: "{{inventory_hostname}}" 
+        username: admin
+        password: "{{password}}" 
+    tags:
+     - check
+     - facts
+
+  - name: Optionally debug output based on the tag
+    debug: msg="{{item.name}} {{item.fullPath}} {{item.pool}}"
+    with_items: "{{bigip_items}}"
+    tags: debug
+#
+  - name: Save config using URL and body
+    icontrol_install_config:
+      uri: "/mgmt/tm/sys/config"
+      body: '{"command":"save"}'
+      method: POST                 # method is optional
+      host: "{{inventory_hostname}}"
+      username: admin
+      password: "{{password}}"
+    notify: foo     
+    tags:
+      - check
+
