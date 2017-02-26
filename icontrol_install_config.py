@@ -23,7 +23,7 @@
       9 June   2016   |  3.3 - documentation update, corrected default value for body, flake8 style updates
      10 June   2016   |  3.4 - added _POST_ method option, which does not fall back to PATCH
      14 June   2016   |  3.5 - flake8 cosmetic changes
-
+     31 August 2016   |  3.6 - added support for token authentication
 """
 
 DOCUMENTATION = '''
@@ -57,16 +57,18 @@ options:
         description:
             - The IP address or hostname of the F5 BIG_IP
         required: true
-
     username:
         description:
             - Login username
-        required: true
-
+        required: if token is not defined
     password:
         description:
             - Login password
-        required: true
+        required: if token is not defined
+    token:
+         description:
+            - Login Token
+        required: if username and password are not defined
     uri:
         description:
             - URI
@@ -117,13 +119,12 @@ EXAMPLES = '''
       username: admin
       password: "{{password}}"
 
-  - name: 41 Delete LTM Node, body not specified
+  - name: 41 Delete LTM Node, body not specified with token
     icontrol_install_config:
       uri: "/mgmt/tm/ltm/node/bar"
       method: DELETE
       host: "{{ltm.hostname}}"
-      username: admin
-      password: "{{password}}"
+      token: "ARGEXAMPLETOKENARG" 
 
   - name: 50 Create LTM Pool, specify POST method
     icontrol_install_config:
@@ -170,10 +171,11 @@ class BIG_IP(object):
     HEADER = {"Content-Type": "application/json"}
     TRANSPORT = "https://"
 
-    def __init__(self, host="192.0.2.1", username="admin", password="redacted", uri="/", method="POST", debug=False):
+    def __init__(self, host="192.0.2.1", username="admin", password="redacted", token=None, uri="/", method="POST", debug=False):
         self.BIG_IP_host = host
         self.username = username
         self.password = password
+        self.token = self.configure_header(token)
         self.uri = self.validate_uri(uri)
         self.method = method
         self.response = None
@@ -182,6 +184,10 @@ class BIG_IP(object):
         self.debug = debug
 
         return
+
+    def configure_header(self, token):
+        BIG_IP.HEADER = {"Content-Type": "application/json","X-F5-Auth-Token": token}
+        return token
 
     def validate_uri(self, uri):
         " make certain the uri has a leading and trailing slash"
@@ -202,7 +208,10 @@ class BIG_IP(object):
         """
         URI = "%s%s%s" % (BIG_IP.TRANSPORT, self.BIG_IP_host, self.uri)
         try:
-            r = requests.delete(URI, auth=(self.username, self.password), headers=BIG_IP.HEADER, verify=False)
+            if self.token is None:
+                r = requests.delete(URI, auth=(self.username, self.password), headers=BIG_IP.HEADER, verify=False)
+            else:
+                r = requests.delete(URI, headers=BIG_IP.HEADER, verify=False)
         except requests.ConnectionError as e:
             self.status_code = 599
             self.response = str(e)
@@ -230,7 +239,10 @@ class BIG_IP(object):
 
         URI = "%s%s%s" % (BIG_IP.TRANSPORT, self.BIG_IP_host, uri)
         try:
-            r = requests.get(URI, auth=(self.username, self.password), headers=BIG_IP.HEADER, verify=False)
+            if self.token is None:
+                r = requests.get(URI, auth=(self.username, self.password), headers=BIG_IP.HEADER, verify=False)
+            else:
+                r = requests.get(URI, headers=BIG_IP.HEADER, verify=False)
         except requests.ConnectionError as e:
             self.status_code = 599
             self.response = str(e)
@@ -251,7 +263,10 @@ class BIG_IP(object):
         """
         URI = "%s%s%s" % (BIG_IP.TRANSPORT, self.BIG_IP_host, self.uri)
         try:
-            r = requests.post(URI, auth=(self.username, self.password), data=body, headers=BIG_IP.HEADER, verify=False)
+            if self.token is None:
+                r = requests.post(URI, auth=(self.username, self.password), data=body, headers=BIG_IP.HEADER, verify=False)
+            else:
+                  r = requests.post(URI, data=body, headers=BIG_IP.HEADER, verify=False)
         except requests.ConnectionError as e:
             self.status_code = 599
             self.response = str(e)
@@ -274,7 +289,10 @@ class BIG_IP(object):
         """
         URI = "%s%s%s" % (BIG_IP.TRANSPORT, self.BIG_IP_host, self.uri)
         try:
-            r = requests.patch(URI, auth=(self.username, self.password), data=body, headers=BIG_IP.HEADER, verify=False)
+            if self.token is None:
+                r = requests.patch(URI, auth=(self.username, self.password), data=body, headers=BIG_IP.HEADER, verify=False)
+            else:
+                r = requests.patch(URI, data=body, headers=BIG_IP.HEADER, verify=False)
         except requests.ConnectionError as e:
             self.status_code = 599
             self.response = str(e)
@@ -356,21 +374,33 @@ def POST_config(F5, body):
 def main():
     "   "
     module = AnsibleModule(
-        argument_spec=dict(
-            host=dict(required=True),
-            username=dict(required=True),
-            password=dict(required=True),
-            uri=dict(required=True),
-            body=dict(required=False, default=dict(), type="raw"),
-            method=dict(required=False, default="POST"),
-            debug=dict(required=False, default=False, type="bool")
-          ),
+        argument_spec={
+            'host': {'required': True},
+            'username': {'type': 'str'},
+            'password': {'type': 'str'},
+            'token': {'type': 'str'},
+            'uri': {'required': True, 'type': 'str'},
+            'body': {'default': {}, 'type': 'raw'},
+            'method': {'default': 'POST', 'type': 'str'},
+            'debug': {'default': False, 'type': 'bool'}
+        },
+        mutually_exclusive=[
+            ['username','token'],
+            ['password','token']
+        ],
+        required_together=[
+            ['username','password']
+        ],
+        required_one_of=[
+            ['username','token']
+        ],
         check_invalid_arguments=False
     )
 
     F5 = BIG_IP(host=module.params["host"],
                 username=module.params["username"],
                 password=module.params["password"],
+                token=module.params["token"],
                 uri=module.params["uri"],
                 method=module.params["method"].upper(),
                 debug=module.params["debug"])
