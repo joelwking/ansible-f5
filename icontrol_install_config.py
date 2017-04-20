@@ -1,7 +1,7 @@
 #!/usr/bin/env python
-
+#
 """
-     Copyright (c) 2015 - 2016  World Wide Technology, Inc.
+     Copyright (c) 2015 - 2017  World Wide Technology, Inc.
      All rights reserved.
 
      Revision history:
@@ -24,30 +24,26 @@
      10 June   2016   |  3.4 - added _POST_ method option, which does not fall back to PATCH
      14 June   2016   |  3.5 - flake8 cosmetic changes
      31 August 2016   |  3.6 - added support for token authentication
+     20 April  2017   |  3.7 - for Ansible 2.3 [WARNING]: Module did not set no_log for password
 """
-
 DOCUMENTATION = '''
 ---
 module: icontrol_install_config.py
-author: Joel W. King, World Wide Technology
-version_added: "3.5"
+author: Joel W. King @joel_w_king
+version_added: "2.0"
 short_description: Ansible module to POST, DELETE and PATCH (update) using the REST API of an F5 BIG_IP
 description:
     - This module is a intended to be a demonstration and training module to update an F5 BIG_IP configuration
       from Ansible playbooks. It is intended to provide means where the URL and body (in JSON) from Chrome
       Postman or the cURL examples in the F5 API documentation can be used in a playbook to demonstrate how to
-      create playbooks.
-
+      create playbooks. 
       If the user has specified POST (which is the default value) and the object exists, we modify the URL and
-      body and issue a PATCH instead. If _POST_ is specified as the method, do not fallback to PATCH.
+      body and issue a PATCH instead. If _POST_ is specified as the method, do not fallback to PATCH. 
 
       This module is also used in the Phantom Cyber F5 app.
 
-
-references:
-      http://docs.ansible.com/
-      iControl(tm) REST API User Guide Version 12.0
-
+notes:
+    - iControl(tm) REST API User Guide Version 12.0
 
 requirements:
     - none
@@ -59,16 +55,16 @@ options:
         required: true
     username:
         description:
-            - Login username
-        required: if token is not defined
+            - Login username, if token is not defined
+        required: false
     password:
         description:
-            - Login password
-        required: if token is not defined
+            - Login password, if token is not defined
+        required: false
     token:
          description:
-            - Login Token
-        required: if username and password are not defined
+            - Login Token, if username and password are not defined
+         required: false
     uri:
         description:
             - URI
@@ -79,14 +75,13 @@ options:
         required: false
     body:
         description:
-            -  string representation of JSON
-                 e.g. '{"name":"NEW_WIDEIP","pools":[{"name":"NEW_POOL","partition":"Common","order":0,"ratio":1}]}'
+            - string representation of JSON
+            - e.g. '{"name":"NEW_WIDEIP","pools":[{"name":"NEW_POOL","partition":"Common","order":0,"ratio":1}]}'
         required: false
     debug:
         description:
             - debug  switch, for future use.
         required: false
-
 
 '''
 
@@ -152,6 +147,9 @@ EXAMPLES = '''
       password: "{{password}}"
 
 '''
+ANSIBLE_METADATA = {'metadata_version': '1.0',
+                    'status': ['preview'],
+                    'supported_by': 'community'}
 
 import json
 import requests
@@ -377,7 +375,7 @@ def main():
         argument_spec={
             'host': {'required': True},
             'username': {'type': 'str'},
-            'password': {'type': 'str'},
+            'password': {'type': 'str', 'no_log': True},
             'token': {'type': 'str'},
             'uri': {'required': True, 'type': 'str'},
             'body': {'default': {}, 'type': 'raw'},

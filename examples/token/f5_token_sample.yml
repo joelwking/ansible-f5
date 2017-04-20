@@ -1,0 +1,38 @@
+#!/usr/bin/ansible-playbook
+---
+- hosts: vf5-mediawiki.sandbox.wwtatc.local 
+  gather_facts: no
+  vars_prompt:
+    - name: "F5_Username"
+      prompt: Please type F5 Username
+      private: no
+    - name: "F5_Password"
+      prompt: Please type F5 Password
+      private: yes
+    - name: "F5_nodename"
+      prompt: Please type the node name to disable
+      default: bogturtle.example.net 
+  tasks:
+  - name: Get F5 Token
+    icontrol_install_config:
+      host: "{{inventory_hostname}}"
+      uri: "/mgmt/shared/authn/login/"
+      body: '{"username": "{{F5_Username}}","password": "{{F5_Password}}", "loginProviderName": "tmos" }'
+      method: "POST"
+      username: "{{F5_Username}}"
+      password: "{{F5_Password}}"
+    register: f5_token_results
+ 
+  - set_fact:
+      F5_Token: "{{(f5_token_results)['content']['token']['token']}}"
+   
+  - name: Disable Node
+    icontrol_install_config:
+      host: "{{inventory_hostname}}"
+      uri: "/mgmt/tm/ltm/node/{{F5_nodename}}/"
+      body: '{"session":"user-disabled"}'
+      method: PATCH
+      token: "{{F5_Token}}"
+    register: disable_node_results
+
+  - debug: var="disable_node_results"
