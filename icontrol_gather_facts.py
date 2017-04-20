@@ -8,6 +8,7 @@
      2 December 2015  |  1.0 - initial release
      3 December 2015  |  1.1 - cosmetic and best practices updates.
      14 December 2016 |  1.2 - address name conflict with 'items'
+     20 April 2017    |  1.3 - https://github.com/joelwking/ansible-f5/issues/2
 
  
 """
@@ -15,8 +16,8 @@
 DOCUMENTATION = '''
 ---
 module: icontrol_gather_facts
-author: Joel W. King, World Wide Technology
-version_added: "1.2"
+author: Joel W. King (@joelwking)
+version_added: "2.0"
 short_description: Gathers Ansible facts from F5 appliance
 description:
     - This module issues a REST API call to an F5 appliance and returns facts to the playbook for subsequent tasks.
@@ -133,7 +134,10 @@ def get_facts(F5, uri):
         uri = "/" + uri
     
     status, result["ansible_facts"]  = F5.genericGET(uri)
-    result["ansible_facts"]["bigip_items"] = result["ansible_facts"].pop("items")   # replace key name of 'items' with 'bigip_items'
+    try:
+        result["ansible_facts"]["bigip_items"] = result["ansible_facts"].pop("items")   # replace key name of 'items' with 'bigip_items'
+    except:
+        result["ansible_facts"]["bigip_items"] = dict()
     return status, result
 
 # ---------------------------------------------------------------------------
@@ -146,7 +150,7 @@ def main():
         argument_spec = dict(
             host = dict(required=True),
             username = dict(required=True),
-            password  = dict(required=True),
+            password  = dict(required=True, no_log=True),
             uri  = dict(required=True),
             debug = dict(required=False)
          ),
@@ -162,7 +166,7 @@ def main():
     else:
         module.fail_json(msg="status_code= %s %s" % (code, response))
     
-
 from ansible.module_utils.basic import *
+
 if __name__ == '__main__':
     main()
