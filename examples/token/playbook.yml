@@ -1,0 +1,38 @@
+---
+- hosts: all
+  gather_facts: no
+  vars:
+    F5_hostname: "f5.contoso.local"
+  vars_prompt:
+    - name: "F5_Username"
+      prompt: Please type F5 Username
+      private: no
+    - name: "F5_Password"
+      prompt: Please type F5 Password
+      private: yes
+  tasks:
+  - name: Get F5 Token
+    icontrol_install_config:
+      host: "{{F5_hostname}}"
+      uri: "/mgmt/shared/authn/login/"
+      body: '{"username": "{{F5_Username}}","password": "{{F5_Password}}", "loginProviderName": "tmos" }'
+      method: "POST"
+      username: "{{F5_Username}}"
+      password: "{{F5_Password}}"
+    delegate_to: localhost 
+    register: f5_token_results
+ 
+  - set_fact:
+      F5_Token: "{{(f5_token_results)['content']['token']['token']}}"
+   
+  - name: Disable Node
+    icontrol_install_config:
+      host: "{{F5_hostname}}"
+      uri: "/mgmt/tm/ltm/node/{{inventory_hostname}}/"
+      body: '{"session":"user-disabled"}'
+      method: PATCH
+      token: "{{F5_Token}}"
+    delegate_to: localhost 
+    register: disable_node_results
+
+  - debug: var="disable_node_results"
