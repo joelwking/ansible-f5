@@ -373,19 +373,15 @@ def main():
     "   "
     module = AnsibleModule(
         argument_spec={
-            'host': {'required': True},
-            'username': {'type': 'str'},
-            'password': {'type': 'str', 'no_log': True},
+            'host': {'required': True, 'fallback': (env_fallback, ['F5_SERVER'])},
+            'username': {'type': 'str', 'fallback': (env_fallback, ['F5_USER'])},
+            'password': {'type': 'str', 'no_log': True, 'fallback': (env_fallback, ['F5_PASSWORD'])},
             'token': {'type': 'str'},
             'uri': {'required': True, 'type': 'str'},
             'body': {'default': {}, 'type': 'raw'},
             'method': {'default': 'POST', 'type': 'str'},
             'debug': {'default': False, 'type': 'bool'}
         },
-        mutually_exclusive=[
-            ['username','token'],
-            ['password','token']
-        ],
         required_together=[
             ['username','password']
         ],
